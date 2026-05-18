@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toy Active Learning — Full Walkthrough</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a14;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 1.8em;
+    margin: 10px 0;
+    background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  #controls {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    padding: 10px 18px;
+    border: 1px solid #444;
+    border-radius: 8px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  button:hover { background: #2a2a4e; border-color: #7b2ff7; }
+  button.active { background: #7b2ff7; border-color: #7b2ff7; color: white; }
+  button:disabled { opacity: 0.3; cursor: not-allowed; }
+  #viz {
+    width: 1120px;
+    max-width: 98vw;
+    background: #111122;
+    border-radius: 12px;
+    box-shadow: 0 0 40px rgba(123, 47, 247, 0.2);
+    padding: 20px;
+    min-height: 600px;
+  }
+  #step-title {
+    text-align: center;
+    font-size: 16px;
+    color: #888;
+    margin-bottom: 10px;
+    min-height: 22px;
+  }
+  .panel {
+    background: #181830;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+    position: relative;
+  }
+  .panel-title {
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    background: #181830;
+    padding: 0 8px;
+    font-size: 12px;
+    color: #888;
+    border-radius: 4px;
+  }
+  .matrix-grid {
+    display: inline-grid;
+    gap: 2px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .matrix-cell {
+    background: #1a1a3a;
+    padding: 6px 10px;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 13px;
+    min-width: 80px;
+  }
+  .matrix-cell.highlight { background: #2a2a5a; color: #00d4ff; }
+  .row-label, .col-label {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    padding: 4px;
+  }
+  .bar-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    height: 200px;
+    padding: 0 10px;
+  }
+  .bar-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    max-width: 90px;
+  }
+  .bar {
+    width: 100%;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.5s ease;
+    min-height: 2px;
+  }
+  .bar-label { font-size: 13px; margin-top: 5px; color: #ccc; }
+  .bar-value { font-size: 11px; color: #aaa; }
+  .bar.selected .bar { background: #00ff96 !important; }
+  .bar.selected .bar-label { color: #00ff96; font-weight: bold; }
+  .bar.selected .bar-value { color: #00ff96; }
+  .star { color: #ffd700; font-size: 18px; margin-top: 2px; }
+  .info-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .info-box {
+    background: #1a1a3a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 200px;
+  }
+  .info-label { font-size: 11px; color: #666; text-transform: uppercase; }
+  .info-value { font-size: 16px; color: #e0e0e0; margin-top: 4px; }
+  .info-value.big { font-size: 24px; color: #00ff96; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: center; border-bottom: 1px solid #222; }
+  th { color: #666; font-weight: normal; font-size: 11px; }
+  tr:hover td { background: #1a1a3a; }
+  td.best { background: #0a2a1a !important; color: #00ff96; font-weight: bold; }
+  .step-indicator {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin: 10px 0;
+  }
+  .step-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #333;
+    transition: all 0.3s;
+  }
+  .step-dot.done { background: #7b2ff7; }
+  .step-dot.current { background: #00d4ff; box-shadow: 0 0 8px #00d4ff; }
+  .calc-line {
+    font-family: 'Consolas', monospace;
+    font-size: 13px;
+    color: #aaa;
+    line-height: 1.6;
+  }
+  .calc-line .em { color: #00d4ff; }
+  .calc-line .val { color: #ffd700; }
+</style>
+</head>
+<body>
+<h1>Toy Active Learning — Step by Step</h1>
+<div id="controls">
+  <button onclick="prevStep()" id="btn-prev">◀ Prev</button>
+  <button onclick="nextStep()" id="btn-next">Next ▶</button>
+  <button onclick="goToCycle(0)" id="btn-c1">Cycle 1</button>
+  <button onclick="goToCycle(1)" id="btn-c2">Cycle 2</button>
+  <button onclick="goToCycle(2)" id="btn-c3">Cycle 3</button>
+  <button onclick="goToCycle(3)" id="btn-c4">Cycle 4</button>
+  <button onclick="toggleAuto()" id="btn-auto">▶ Auto Play</button>
+</div>
+<div id="step-title"></div>
+<div class="step-indicator" id="step-dots"></div>
+<div id="viz"></div>
+
+<script>
+// ============================================================
+const CYCLES = [
+  {
+    X_train: [13, 16], Y_train: [7.0, 4.7],
+    candidates: [11, 12, 14, 15, 17, 18, 19],
+    K: [[6.5, 7.1724], [7.1724, 8.0]],
+    K_inv: [[14.3761, -12.8889], [-12.8889, 11.6806]],
+    det: 0.5565,
+    preds: [
+      {x:11, mean:8.4016, sigma:0.0362, ucb:0.8583, kstar:[5.9583,6.5185], aT:[1.6409,-0.6564]},
+      {x:12, mean:7.7223, sigma:0.0140, ucb:0.7792, kstar:[6.2400,6.8571], aT:[1.3257,-0.3314]},
+      {x:14, mean:6.2487, sigma:0.0065, ucb:0.6281, kstar:[6.7407,7.4667], aT:[0.6683,0.3342]},
+      {x:15, mean:5.4793, sigma:0.0063, ucb:0.5511, kstar:[6.9643,7.7419], aT:[0.3341,0.6682]},
+      {x:17, mean:3.9174, sigma:0.0118, ucb:0.3976, kstar:[7.3667,8.2424], aT:[-0.3320,1.3279]},
+      {x:18, mean:3.1366, sigma:0.0285, ucb:0.3279, kstar:[7.5484,8.4706], aT:[-0.6603,1.6509]},
+      {x:19, mean:2.3614, sigma:0.0495, ucb:0.2609, kstar:[7.7188,8.6857], aT:[-0.9839,1.9679]},
+    ],
+    selected: 11, selected_y: 8.5330,
+  },
+  {
+    X_train: [13, 16, 11], Y_train: [7.0, 4.7, 8.5330],
+    candidates: [12, 14, 15, 17, 18, 19],
+    K: [[6.5,7.1724,5.9583],[7.1724,8.0,6.5185],[5.9583,6.5185,5.5]],
+    K_inv: [[2070.154,-835.2,-1252.8],[-835.2,340.605,501.12],[-1252.8,501.12,763.462]],
+    det: 0.000729,
+    preds: [
+      {x:12, mean:7.7730, sigma:0.0006, ucb:0.7776},
+      {x:14, mean:6.2252, sigma:0.0008, ucb:0.6229},
+      {x:15, mean:5.4566, sigma:0.0010, ucb:0.5461},
+      {x:17, mean:3.9592, sigma:0.0025, ucb:0.3972},
+      {x:18, mean:3.2369, sigma:0.0069, ucb:0.3271},
+      {x:19, mean:2.5347, sigma:0.0132, ucb:0.2601},
+    ],
+    selected: 12, selected_y: 7.7663,
+  },
+  {
+    X_train: [13, 16, 11, 12], Y_train: [7.0, 4.7, 8.5330, 7.7663],
+    candidates: [14, 15, 17, 18, 19],
+    K: [[6.5,7.1724,5.9583,6.24],[7.1724,8.0,6.5185,6.8571],[5.9583,6.5185,5.5,5.7391],[6.24,6.8571,5.7391,6.0]],
+    K_inv: null,
+    det: 0.00000000027,
+    preds: [
+      {x:14, mean:6.2338, sigma:0.00006, ucb:0.6234},
+      {x:15, mean:5.4673, sigma:0.00017, ucb:0.5468},
+      {x:17, mean:3.9317, sigma:0.00046, ucb:0.3934},
+      {x:18, mean:3.1623, sigma:0.00138, ucb:0.3169},
+      {x:19, mean:2.3922, sigma:0.00299, ucb:0.2407},
+    ],
+    selected: 14, selected_y: 6.2329,
+  },
+  {
+    X_train: [13, 16, 11, 12, 14], Y_train: [7.0, 4.7, 8.5330, 7.7663, 6.2329],
+    candidates: [15, 17, 18, 19],
+    K: null,
+    K_inv: null,
+    det: 0.00000000000000000098,
+    preds: [
+      {x:15, mean:5.4657, sigma:0.0, ucb:0.5466},
+      {x:17, mean:3.9384, sigma:0.0, ucb:0.3938},
+      {x:18, mean:3.1836, sigma:0.0, ucb:0.3184},
+      {x:19, mean:2.4382, sigma:0.0, ucb:0.2438},
+    ],
+    selected: 15, selected_y: 5.4662,
+  },
+];
+
+function trueF(x) { return 16.9667 - 0.7667 * x; }
+
+let currentCycle = 0, currentStep = 0;
+let autoTimer = null, autoPlaying = false;
+const STEP_NAMES = ["Overview", "Kernel Matrix K", "K⁻¹ & Predictions", "UCB Selection", "Result"];
+
+function getMaxSteps(cycIdx) { return cycIdx === 0 ? 4 : 3; }
+
+// ============================================================
+function render() {
+  const cyc = CYCLES[currentCycle];
+  const maxSteps = getMaxSteps(currentCycle);
+  
+  // Update title
+  const cycleName = currentCycle === 0 ? 'Cycle 1 — Starting with 2 known points' :
+    `Cycle ${currentCycle+1} — ${cyc.X_train.length} training points`;
+  document.getElementById('step-title').textContent =
+    `${cycleName} · Step ${currentStep}: ${STEP_NAMES[currentStep]}`;
+  
+  // Update step dots
+  let dots = '';
+  for (let i = 0; i <= maxSteps; i++) {
+    const cls = i < currentStep ? 'done' : i === currentStep ? 'current' : '';
+    dots += `<span class="step-dot ${cls}"></span>`;
+  }
+  document.getElementById('step-dots').innerHTML = dots;
+  
+  // Update buttons
+  ['btn-c1','btn-c2','btn-c3','btn-c4'].forEach((id,i) => {
+    document.getElementById(id).classList.toggle('active', i === currentCycle);
+  });
+  document.getElementById('btn-auto').textContent = autoPlaying ? '⏸ Stop' : '▶ Auto Play';
+  
+  // Render content
+  const viz = document.getElementById('viz');
+  switch (currentStep) {
+    case 0: viz.innerHTML = renderOverview(cyc); break;
+    case 1: viz.innerHTML = renderKMatrix(cyc); break;
+    case 2: viz.innerHTML = renderPredictions(cyc); break;
+    case 3: viz.innerHTML = renderSelection(cyc); break;
+    case 4: viz.innerHTML = renderResult(cyc); break;
+  }
+  
+  // Animate bars if on selection step
+  if (currentStep === 3) {
+    setTimeout(() => {
+      document.querySelectorAll('.bar').forEach(b => {
+        const target = b.dataset.height;
+        b.style.height = target;
+      });
+    }, 50);
+  }
+}
+
+function renderOverview(cyc) {
+  const trainPts = cyc.X_train.map((x,i) => `(${x}, ${cyc.Y_train[i].toFixed(1)})`).join(', ');
+  
+  // Mini plot as SVG
+  const plotW = 450, plotH = 200;
+  const xMin = 10.5, xMax = 19.5, yMin = 0, yMax = 10;
+  function sx(v) { return ((v-xMin)/(xMax-xMin))*plotW; }
+  function sy(v) { return plotH - ((v-yMin)/(yMax-yMin))*plotH; }
+  
+  let linePts = '';
+  for (let xv = xMin; xv <= xMax; xv += 0.1) {
+    linePts += `${sx(xv).toFixed(1)},${sy(trueF(xv)).toFixed(1)} `;
+  }
+  
+  let trainCircles = '';
+  cyc.X_train.forEach((x, i) => {
+    trainCircles += `<circle cx="${sx(x)}" cy="${sy(cyc.Y_train[i])}" r="5" fill="#00cc66" stroke="#00ff96" stroke-width="1.5"/>`;
+    trainCircles += `<text x="${sx(x)}" y="${sy(cyc.Y_train[i])-10}" text-anchor="middle" fill="#ccc" font-size="11">(${x},${cyc.Y_train[i].toFixed(1)})</text>`;
+  });
+  
+  return `
+    <div class="info-row">
+      <div class="info-box" style="flex:1">
+        <div class="info-label">Training Data (Known)</div>
+        <div class="info-value">X = {${cyc.X_train.join(', ')}}</div>
+        <div class="info-value" style="font-size:14px">Y = {${cyc.Y_train.map(y=>y.toFixed(4)).join(', ')}}</div>
+        <div style="margin-top:10px;font-size:12px;color:#666">
+          Kernel: k(x,y) = (x·y)/(x+y)<br>
+          UCB: α=0.1 + β=0.5<br>
+          Pool: {${[...cyc.X_train, ...cyc.candidates].sort((a,b)=>a-b).join(', ')}}<br>
+          Candidates: {${cyc.candidates.join(', ')}}
+        </div>
+      </div>
+      <div class="info-box" style="flex:1">
+        <div class="info-label">True Function f(x) = 16.97 − 0.767x</div>
+        <svg viewBox="0 0 ${plotW} ${plotH}" style="width:100%;max-width:450px;background:#0a0a18;border-radius:8px">
+          <line x1="0" y1="${plotH}" x2="${plotW}" y2="${plotH}" stroke="#333" stroke-width="1"/>
+          <line x1="0" y1="0" x2="0" y2="${plotH}" stroke="#333" stroke-width="1"/>
+          <polyline points="${linePts}" fill="none" stroke="#00cccc" stroke-width="1.5" opacity="0.7"/>
+          ${trainCircles}
+        </svg>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:15px">
+      <div class="panel-title">How Active Learning Works</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;padding:10px 0">
+        ${[
+          '① Build kernel matrix K from known points',
+          '② Compute K⁻¹ (matrix inverse)',
+          '③ For each candidate: k* = [k(x*,x₁), k(x*,x₂), …]',
+          '④ Predict: μ = k*ᵀ K⁻¹ y, σ² = k(x*,x*) − k*ᵀ K⁻¹ k*',
+          '⑤ Score: UCB = 0.1·μ + 0.5·σ',
+          '⑥ Select highest UCB → query oracle → retrain',
+        ].map(s => `<span style="background:#1a1a3a;padding:8px 14px;border-radius:8px;font-size:13px">${s}</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderKMatrix(cyc) {
+  const n = cyc.X_train.length;
+  
+  // Build matrix HTML
+  let rows = '';
+  for (let i = 0; i < n; i++) {
+    let cells = `<span class="row-label">x=${cyc.X_train[i]}</span>`;
+    for (let j = 0; j < n; j++) {
+      cells += `<span class="matrix-cell">${cyc.K[i][j].toFixed(4)}</span>`;
+    }
+    rows += `<div style="display:flex;align-items:center;gap:2px;margin:2px 0">${cells}</div>`;
+  }
+  
+  // Column labels
+  let colLabels = '<span style="width:40px"></span>';
+  for (let j = 0; j < n; j++) colLabels += `<span class="col-label" style="width:80px">x=${cyc.X_train[j]}</span>`;
+  
+  const exampleI = 0, exampleJ = Math.min(1, n-1);
+  const exVal = cyc.K[exampleI][exampleJ];
+  const exXi = cyc.X_train[exampleI], exXj = cyc.X_train[exampleJ];
+  
+  let invHTML = '';
+  if (cyc.K_inv) {
+    let invRows = '';
+    for (let i = 0; i < n; i++) {
+      let cells = '';
+      for (let j = 0; j < n; j++) {
+        const v = cyc.K_inv[i][j];
+        cells += `<span class="matrix-cell" style="font-size:11px">${Math.abs(v)>100 ? v.toFixed(0) : v.toFixed(2)}</span>`;
+      }
+      invRows += `<div style="display:flex;gap:2px;margin:2px 0">${cells}</div>`;
+    }
+    invHTML = `
+      <div style="margin-top:20px">
+        <span style="color:#00d4ff;font-size:14px">K⁻¹ (det = ${cyc.det.toExponential(2)}):</span>
+        <div style="margin-top:8px">${invRows}</div>
+      </div>
+    `;
+  }
+  
+  return `
+    <div class="panel">
+      <div class="panel-title">Step 1: Build Kernel Matrix K — k(xᵢ,xⱼ) = (xᵢ·xⱼ)/(xᵢ+xⱼ)</div>
+      <div style="overflow-x:auto;padding:10px">
+        <div style="display:inline-block">${colLabels}${rows}</div>
+      </div>
+      <div class="calc-line" style="margin-top:10px">
+        Example: <span class="em">k(${exXi},${exXj})</span> = 
+        <span class="val">${exXi}×${exXj}/${exXi}+${exXj}</span> = 
+        <span class="val">${exXi*exXj}/${exXi+exXj}</span> = 
+        <span class="em">${exVal.toFixed(4)}</span>
+      </div>
+      ${invHTML}
+    </div>
+  `;
+}
+
+function renderPredictions(cyc) {
+  const n_train = cyc.X_train.length;
+  let rows = '';
+  
+  cyc.preds.forEach((p, idx) => {
+    let detail = '';
+    if (cyc.X_train.length <= 3 && p.kstar) {
+      // Show full calculation for cycle 1
+      const kstarStr = p.kstar.map(v=>v.toFixed(4)).join(', ');
+      const aTStr = p.aT ? p.aT.map(v=>v.toFixed(4)).join(', ') : '';
+      const muCalc = p.aT ? p.aT.map((a,i) => `${a.toFixed(4)}×${cyc.Y_train[i].toFixed(4)}`).join(' + ') : '';
+      const kss = cyc.X_train.length === 2 ? 
+        (() => { const k = {11:5.5,12:6.0,14:7.0,15:7.5,17:8.5,18:9.0,19:9.5}; return k[p.x] || '—'; })() : '—';
+      const varCalc = p.aT ? p.aT.map((a,i) => `${a.toFixed(4)}×${p.kstar[i].toFixed(4)}`).join(' + ') : '';
+      
+      detail = `
+        <div style="font-size:11px;color:#666;margin-top:4px">
+          k* = [${kstarStr}]<br>
+          k*ᵀK⁻¹ = [${aTStr}]<br>
+          μ = ${muCalc} = <span style="color:#ffd700">${p.mean.toFixed(4)}</span><br>
+          σ² = ${kss} − (${varCalc}) = ${p.sigma < 0.001 ? '≈0' : p.sigma.toFixed(6)}<br>
+          UCB = 0.1×${p.mean.toFixed(4)} + 0.5×${p.sigma.toFixed(4)} = <span style="color:#00ff96">${p.ucb.toFixed(4)}</span>
+        </div>
+      `;
+    }
+    
+    rows += `
+      <tr>
+        <td><strong>x*=${p.x}</strong></td>
+        <td>μ=${p.mean.toFixed(4)}</td>
+        <td>σ=${p.sigma.toFixed(4)}</td>
+        <td>σ²=${(p.sigma*p.sigma).toFixed(6)}</td>
+        <td style="color:#ffd700">UCB=${p.ucb.toFixed(4)}</td>
+        <td>${detail}</td>
+      </tr>
+    `;
+  });
+  
+  return `
+    <div class="panel">
+      <div class="panel-title">Step 2: Predictions for All Candidates — μ = k*ᵀ K⁻¹ y, σ² = k(x*,x*) − k*ᵀ K⁻¹ k*</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Candidate</th><th>Mean μ</th><th>σ</th><th>Variance σ²</th><th>UCB Score</th><th>Calculation</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderSelection(cyc) {
+  const maxUCB = Math.max(...cyc.preds.map(p => p.ucb));
+  
+  let bars = '';
+  cyc.preds.forEach(p => {
+    const h = (p.ucb / maxUCB) * 160;
+    const isSel = p.x === cyc.selected;
+    bars += `
+      <div class="bar-item ${isSel ? 'selected' : ''}">
+        <div class="bar-value">${p.ucb.toFixed(4)}</div>
+        <div class="bar" data-height="${h}px" style="height:0px;background:${isSel?'#00ff96':'#7b2ff7'}"></div>
+        <div class="bar-label">x=${p.x}</div>
+        ${isSel ? '<div class="star">🏆 BEST</div>' : ''}
+      </div>
+    `;
+  });
+  
+  const selPred = cyc.preds.find(p => p.x === cyc.selected);
+  const newX = [...cyc.X_train, cyc.selected];
+  const newY = [...cyc.Y_train, cyc.selected_y];
+  
+  return `
+    <div class="panel">
+      <div class="panel-title">Step 3: UCB Selection — Pick highest UCB = α·μ + β·σ</div>
+      <div class="bar-container">${bars}</div>
+    </div>
+    <div class="info-row" style="margin-top:15px">
+      <div class="info-box" style="flex:1">
+        <div class="info-label">Selected Point</div>
+        <div class="info-value big">x = ${cyc.selected}</div>
+        <div style="margin-top:8px;font-size:13px;color:#ccc">
+          μ = ${selPred.mean.toFixed(4)}<br>
+          σ = ${selPred.sigma.toFixed(4)}<br>
+          UCB = ${selPred.ucb.toFixed(4)}
+        </div>
+      </div>
+      <div class="info-box" style="flex:1">
+        <div class="info-label">Oracle Reveals</div>
+        <div class="info-value big">f(${cyc.selected}) = ${cyc.selected_y.toFixed(4)}</div>
+      </div>
+      <div class="info-box" style="flex:1">
+        <div class="info-label">Updated Training Set</div>
+        <div style="font-size:13px;color:#ccc;margin-top:5px">
+          X = {${newX.join(', ')}}<br>
+          Y = {${newY.map(y=>y.toFixed(4)).join(', ')}}
+        </div>
+        ${currentCycle < 3 ? '<div style="margin-top:5px;color:#7b2ff7">→ Ready for next cycle!</div>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderResult(cyc) {
+  const newX = [...cyc.X_train, cyc.selected];
+  const newY = [...cyc.Y_train, cyc.selected_y];
+  
+  let rows = '';
+  newX.forEach((x, i) => {
+    const isNew = i === newX.length - 1;
+    rows += `<tr><td>${isNew ? '🆕' : ''} x=${x}</td><td>f(x)=${newY[i].toFixed(4)}</td></tr>`;
+  });
+  
+  let summaryHTML = '';
+  if (currentCycle === 3) {
+    const finalX = [13, 16, 11, 12, 14, 15];
+    const finalY = [7.0, 4.7, 8.533, 7.7663, 6.2329, 5.4662];
+    summaryHTML = `
+      <div class="panel" style="margin-top:15px">
+        <div class="panel-title">🎉 All 4 Cycles Complete!</div>
+        <div style="padding:15px">
+          <div style="font-size:14px;margin-bottom:10px">
+            <strong>Final Training Set:</strong> X = {${finalX.join(', ')}}<br>
+            Y = {${finalY.map(y=>y.toFixed(4)).join(', ')}}<br>
+            Remaining pool: {17, 18, 19}
+          </div>
+          <div style="color:#00d4ff;font-size:13px">
+            Selection order: <strong>11 → 12 → 14 → 15</strong><br>
+            The algorithm first explores the edges (high uncertainty from few points),<br>
+            then fills in gaps as uncertainty shrinks with more data.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  const remainCands = cyc.candidates.filter(c => c !== cyc.selected);
+  
+  return `
+    <div class="panel">
+      <div class="panel-title">Cycle ${currentCycle+1} Complete — Training Set Updated</div>
+      <table>
+        <thead><tr><th>Point</th><th>Value</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:10px;font-size:12px;color:#666">
+        Remaining candidates: {${remainCands.join(', ')}}
+      </div>
+    </div>
+    ${summaryHTML}
+  `;
+}
+
+// ============================================================
+function nextStep() {
+  const max = getMaxSteps(currentCycle);
+  if (currentStep < max) { currentStep++; }
+  else if (currentCycle < 3) { currentCycle++; currentStep = 0; }
+  else { stopAuto(); return; }
+  render();
+  if (autoPlaying) autoTimer = setTimeout(nextStep, 3500);
+}
+
+function prevStep() {
+  if (currentStep > 0) { currentStep--; }
+  else if (currentCycle > 0) { currentCycle--; currentStep = getMaxSteps(currentCycle); }
+  render();
+}
+
+function goToCycle(c) {
+  stopAuto();
+  currentCycle = c; currentStep = 0;
+  render();
+}
+
+function toggleAuto() {
+  if (autoPlaying) { stopAuto(); }
+  else {
+    autoPlaying = true;
+    document.getElementById('btn-auto').textContent = '⏸ Stop';
+    document.getElementById('btn-auto').classList.add('active');
+    autoTimer = setTimeout(nextStep, 2500);
+  }
+}
+
+function stopAuto() {
+  autoPlaying = false;
+  if (autoTimer) clearTimeout(autoTimer);
+  document.getElementById('btn-auto').textContent = '▶ Auto Play';
+  document.getElementById('btn-auto').classList.remove('active');
+}
+
+// Keyboard nav
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') nextStep();
+  else if (e.key === 'ArrowLeft') prevStep();
+  else if (e.key === ' ') { e.preventDefault(); toggleAuto(); }
+});
+
+// Init
+render();
+</script>
+</body>
+</html>
