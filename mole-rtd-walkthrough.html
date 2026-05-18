@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MolE-RTD: Full Pipeline Visual Walkthrough</title>
+<style>
+  :root {
+    --bg: #0a0a14; --panel: #111128; --border: #2a2a4a;
+    --accent: #00d4ff; --gold: #ffd700; --green: #00ff96;
+    --purple: #7b2ff7; --dim: #666; --text: #ccc;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 {
+    font-size: 2em; text-align: center; margin: 20px 0;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  h2 { color: var(--accent); margin: 30px 0 12px; font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { color: var(--gold); margin: 16px 0 8px; font-size: 1.1em; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 20px; margin: 12px 0;
+  }
+  .panel-title {
+    font-size: 12px; color: var(--dim); text-transform: uppercase;
+    margin-bottom: 10px; letter-spacing: 1px;
+  }
+  .code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    background: #0d0d20; padding: 2px 6px; border-radius: 3px;
+    font-size: 13px; color: var(--accent);
+  }
+  .highlight { color: var(--green); font-weight: bold; }
+  .warn { color: #ff9944; }
+  .flow {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    justify-content: center; margin: 16px 0;
+  }
+  .flow-box {
+    background: #1a1a3a; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px; font-size: 13px;
+    text-align: center; min-width: 100px;
+  }
+  .flow-arrow { color: var(--purple); font-size: 20px; }
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--purple); color: white; font-size: 14px; font-weight: bold;
+    margin-right: 8px;
+  }
+  .matrix {
+    display: inline-grid; gap: 2px; font-family: 'Consolas', monospace;
+  }
+  .matrix-cell {
+    background: #1a1a3a; padding: 5px 10px; border-radius: 3px;
+    text-align: center; font-size: 13px; min-width: 50px;
+  }
+  .matrix-cell.hl { background: #2a1a4a; color: var(--accent); }
+  .matrix-cell.gold { background: #2a2a1a; color: var(--gold); }
+  .row-label, .col-label { color: var(--dim); font-size: 11px; text-align: center; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }
+  th, td { padding: 6px 12px; text-align: center; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-weight: normal; font-size: 11px; text-transform: uppercase; }
+  .diagram {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    justify-content: center; margin: 12px 0;
+  }
+  .atom-box {
+    width: 50px; height: 50px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 14px;
+  }
+  .atom-C { background: #1a3a3a; border: 2px solid #3a8a8a; color: #5affff; }
+  .atom-O { background: #3a1a1a; border: 2px solid #8a3a3a; color: #ff5a5a; }
+  .bond { color: var(--dim); font-size: 18px; min-width: 24px; text-align: center; }
+  .attention-grid {
+    display: grid; gap: 1px; margin: 8px 0;
+  }
+  .att-cell {
+    padding: 4px 8px; text-align: center; font-size: 11px;
+    border-radius: 3px; min-width: 55px;
+    font-family: 'Consolas', monospace;
+  }
+  hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+  .note {
+    background: #1a1a2a; border-left: 3px solid var(--accent);
+    padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 10px 0;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🧬 MolE-RTD: Every Moving Piece</h1>
+<p style="text-align:center;color:var(--dim);margin-bottom:30px">
+  From SMILES string → tokenized atoms → graph distances → disentangled attention → RTD pretraining → CLS embedding → prediction
+</p>
+
+<!-- ============================================================ -->
+<!-- OVERVIEW PIPELINE -->
+<!-- ============================================================ -->
+<h2>Pipeline Overview</h2>
+<div class="flow">
+  <div class="flow-box">SMILES<br><span class="code">"CCO"</span></div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">RDKit<br>Mol Object</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">Morgan FP<br>Tokenize</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">Distance<br>Matrix</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">Add [CLS]<br>+ Padding</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">Word<br>Embeddings</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">Disentangled<br>Attention×12</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">CLS Token<br>[768-dim]</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-box">Predict<br>(XGBoost/MLP)</div>
+</div>
+
+<div class="note">
+  <strong>Example molecule throughout:</strong> <span class="code">CCO</span> (ethanol) — 3 heavy atoms, 2 bonds.
+  Simple enough to show everything, real enough to demonstrate the full pipeline.
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 1: SMILES → RDKit -->
+<!-- ============================================================ -->
+<h2><span class="step-num">1</span> SMILES → RDKit Molecule</h2>
+<div class="panel">
+  <div class="panel-title">Input: A SMILES string enters the system</div>
+  <div style="font-size:18px;margin:10px 0"><span class="code">"CCO"</span> → <span class="code">Chem.MolFromSmiles("CCO")</span></div>
+  
+  <div class="diagram">
+    <div class="atom-box atom-C">C₁</div>
+    <div class="bond">—</div>
+    <div class="atom-box atom-C">C₂</div>
+    <div class="bond">—</div>
+    <div class="atom-box atom-O">O</div>
+  </div>
+  
+  <p style="color:var(--dim);font-size:13px;margin-top:10px">
+    RDKit parses the SMILES into a <span class="code">Mol</span> object with atoms, bonds, and graph structure.
+    <br><strong>3 heavy atoms, 2 bonds.</strong> Hydrogens are implicit — they don't get tokens.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 2: Tokenization -->
+<!-- ============================================================ -->
+<h2><span class="step-num">2</span> Tokenization: Morgan Fingerprint (Radius 0)</h2>
+
+<div class="panel">
+  <div class="panel-title">How atoms become tokens</div>
+  
+  <p>Each heavy atom is fingerprinted with a <strong>Morgan fingerprint of radius 0</strong> — meaning each atom is encoded by its <em>own</em> elemental type, hybridization, and aromaticity. No neighborhood information.</p>
+  
+  <div style="margin:12px 0">
+    <div class="code" style="display:block;padding:10px">
+      info = {}<br>
+      AllChem.GetMorganFingerprint(mol, radius=0, bitInfo=info,<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;includeRedundantEnvironments=True)<br>
+      <span style="color:var(--dim)"># info = {bit_id: [(atom_idx, radius), ...], ...}</span>
+    </div>
+  </div>
+  
+  <h3>For ethanol (CCO):</h3>
+  <table>
+    <tr><th>Atom Index</th><th>Element</th><th>Morgan Bit</th><th>Vocabulary Token</th><th>Token ID</th></tr>
+    <tr><td>0</td><td>C (sp³, aliphatic)</td><td style="color:var(--accent)">bit_42</td><td>C_sp3_aliphatic</td><td class="highlight">17</td></tr>
+    <tr><td>1</td><td>C (sp³, bonded to O)</td><td style="color:var(--accent)">bit_58</td><td>C_sp3_adjO</td><td class="highlight">23</td></tr>
+    <tr><td>2</td><td>O (sp³, hydroxyl)</td><td style="color:var(--accent)">bit_107</td><td>O_sp3_hydroxyl</td><td class="highlight">89</td></tr>
+  </table>
+  <p style="color:var(--dim);font-size:12px;margin-top:6px">
+    * Token IDs are illustrative — the actual vocabulary has 207 atom-environment tokens + 4 specials = 211 total.
+    Special tokens: <span class="code">[PAD]=0</span>, <span class="code">[CLS]=1</span>, <span class="code">[SEP]=2</span>, <span class="code">[MASK]=208</span>, <span class="code">[UNK]=210</span>
+  </p>
+  
+  <div class="note">
+    <strong>Why radius 0?</strong> Larger radii would encode graph structure INTO the token identity. 
+    The discriminator could then trivially detect replaced tokens by pattern-matching atom neighborhoods. 
+    Radius 0 forces the model to learn structure from <em>relative positions</em>, making RTD genuinely hard.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 3: Distance Matrix -->
+<!-- ============================================================ -->
+<h2><span class="step-num">3</span> Molecular Graph → Distance Matrix</h2>
+<div class="panel">
+  <div class="panel-title">Bond distances become the positional encoding</div>
+  
+  <div class="code" style="display:block;padding:10px;margin:8px 0">
+    dist_mat = Chem.GetDistanceMatrix(mol)  <span style="color:var(--dim)"># shortest path in bonds</span>
+  </div>
+  
+  <h3>Distance matrix for ethanol:</h3>
+  <div style="display:flex;align-items:center;gap:30px;flex-wrap:wrap">
+    <div>
+      <div class="matrix" style="grid-template-columns: 50px repeat(3, 60px)">
+        <span></span><span class="col-label">C₁</span><span class="col-label">C₂</span><span class="col-label">O</span>
+        <span class="row-label">C₁</span><span class="matrix-cell hl">0</span><span class="matrix-cell">1</span><span class="matrix-cell">2</span>
+        <span class="row-label">C₂</span><span class="matrix-cell">1</span><span class="matrix-cell hl">0</span><span class="matrix-cell">1</span>
+        <span class="row-label">O</span><span class="matrix-cell">2</span><span class="matrix-cell">1</span><span class="matrix-cell hl">0</span>
+      </div>
+      <p style="font-size:11px;color:var(--dim);margin-top:4px">Diagonal = 0 (self).<br>Off-diagonal = bond distance.</p>
+    </div>
+    <div style="color:var(--dim);font-size:13px">
+      C₁↔C₂ = <span class="highlight">1</span> (directly bonded)<br>
+      C₂↔O = <span class="highlight">1</span> (directly bonded)<br>
+      C₁↔O = <span class="highlight">2</span> (two bonds away)<br>
+      Disconnected atoms → <span class="warn">1e8</span> (set to -1 then shifted to 0)
+    </div>
+  </div>
+  
+  <div class="note" style="margin-top:12px">
+    <strong>Key insight:</strong> The distance matrix IS the molecule's positional encoding. 
+    Unlike NLP (where position = sequence order), molecules have <strong>graph structure</strong> — 
+    atoms are related by bond paths, not linear order. These distances feed directly into 
+    disentangled attention as <strong>relative positions</strong>.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 4: CLS Token + Sparse → Dense -->
+<!-- ============================================================ -->
+<h2><span class="step-num">4</span> Add [CLS] Token + Prepare Inputs</h2>
+<div class="panel">
+  <div class="panel-title">Prepend classification token, transform to dense tensors</div>
+  
+  <h3>Step 4a: Insert [CLS] at position 0</h3>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin:10px 0">
+    <div>
+      <p style="font-size:12px;color:var(--dim)">Token sequence (before):</p>
+      <div style="display:flex;gap:4px">
+        <span class="matrix-cell">17</span><span class="matrix-cell">23</span><span class="matrix-cell">89</span>
+      </div>
+    </div>
+    <span style="font-size:24px;color:var(--purple)">→</span>
+    <div>
+      <p style="font-size:12px;color:var(--dim)">Token sequence (after CLS):</p>
+      <div style="display:flex;gap:4px">
+        <span class="matrix-cell hl">1</span><span class="matrix-cell">17</span><span class="matrix-cell">23</span><span class="matrix-cell">89</span>
+      </div>
+      <p style="font-size:10px;color:var(--dim)">[CLS] at idx=0, then atom tokens</p>
+    </div>
+  </div>
+  
+  <p style="font-size:12px;color:var(--dim)">Distance matrix gets a row+column of zeros for [CLS] (connected to everything at distance 0)</p>
+  
+  <h3>Step 4b: Convert sparse COO → dense tensor</h3>
+  <div class="code" style="display:block;padding:10px;margin:8px 0">
+    <span style="color:var(--dim)"># In PyTorch Geometric:</span><br>
+    input_ids, input_mask = to_dense_batch(batch.x, batch.batch, fill_value=<span class="highlight">0</span>)<br>
+    relative_pos = to_dense_adj(batch.edge_index, batch.batch, batch.edge_attr)
+  </div>
+  
+  <p>For a batch with ethanol (seq_len=4) padded to max_len:</p>
+  <div style="display:flex;gap:8px;margin:8px 0">
+    <span class="code">input_ids</span>
+    <span>=</span>
+    <div style="display:flex;gap:2px">
+      <span class="matrix-cell hl">1</span><span class="matrix-cell">17</span><span class="matrix-cell">23</span><span class="matrix-cell">89</span>
+    </div>
+    <span style="color:var(--dim)">shape: [B, max_len]</span>
+  </div>
+  <div style="display:flex;gap:8px;margin:8px 0">
+    <span class="code">input_mask</span>
+    <span>=</span>
+    <div style="display:flex;gap:2px">
+      <span class="matrix-cell hl">T</span><span class="matrix-cell">T</span><span class="matrix-cell">T</span><span class="matrix-cell">T</span>
+    </div>
+    <span style="color:var(--dim)">True = real token, False = padding</span>
+  </div>
+  <div style="display:flex;gap:8px;margin:8px 0">
+    <span class="code">relative_pos</span>
+    <span>=</span>
+    <span style="color:var(--dim)">dense [B, max_len, max_len] with bond distances</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 5: Embeddings -->
+<!-- ============================================================ -->
+<h2><span class="step-num">5</span> Word Embeddings (No Position Embeddings!)</h2>
+<div class="panel">
+  <div class="panel-title">Tokens → dense vectors. Position info comes ONLY from relative attention.</div>
+  
+  <div class="code" style="display:block;padding:10px;margin:8px 0">
+    words_embeddings = self.word_embeddings(input_ids)  <span style="color:var(--dim)"># [B, L, 768]</span><br>
+    <span style="color:var(--dim)"># position_biased_input = False → NO absolute position embeddings!</span><br>
+    <span style="color:var(--dim)"># max_position_embeddings = 0 → position embedding table is empty</span><br>
+    embeddings = words_embeddings  <span style="color:var(--dim)"># just word vectors</span><br>
+    embeddings = LayerNorm(embeddings)  <span style="color:var(--dim)"># normalize</span><br>
+    embeddings = Dropout(0.1)(embeddings)
+  </div>
+  
+  <div style="margin:12px 0">
+    <table>
+      <tr><th>Token</th><th>ID</th><th>→</th><th>Embedding Vector (first 6 of 768 dims)</th></tr>
+      <tr><td style="color:var(--accent)">[CLS]</td><td>1</td><td>→</td><td class="code">[-0.02, 0.14, -0.08, 0.03, 0.11, -0.05, …]</td></tr>
+      <tr><td>C₁ (sp³)</td><td>17</td><td>→</td><td class="code">[ 0.09, -0.03, 0.12, -0.07, 0.01, 0.08, …]</td></tr>
+      <tr><td>C₂ (sp³ adjO)</td><td>23</td><td>→</td><td class="code">[ 0.05, 0.11, -0.04, 0.09, -0.02, -0.06, …]</td></tr>
+      <tr><td>O (hydroxyl)</td><td>89</td><td>→</td><td class="code">[-0.11, 0.02, 0.07, -0.09, 0.04, 0.13, …]</td></tr>
+    </table>
+  </div>
+  
+  <div class="note">
+    <strong>🔑 Critical design decision:</strong> MolE-RTD uses <span class="highlight">NO absolute position embeddings</span>.
+    Unlike BERT (which adds position[i] to token[i]), MolE-RTD relies entirely on 
+    <strong>graph-derived relative positions</strong> fed through disentangled attention. 
+    The molecular graph <em>IS</em> the position encoding.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 6: Relative Position Embeddings -->
+<!-- ============================================================ -->
+<h2><span class="step-num">6</span> Relative Position Embedding Lookup</h2>
+<div class="panel">
+  <div class="panel-title">Each bond-distance maps to a learned 64-dim vector</div>
+  
+  <p>The relative position embedding table has shape <span class="code">[1024, 64]</span> = 
+    <span class="code">[2 × max_relative_positions, head_size]</span> where <span class="code">max_relative_positions = 512</span>.</p>
+  
+  <p>Position index <span class="code">rel_pos</span> (the bond distance) maps to embedding row:</p>
+  <div class="code" style="display:block;padding:8px;text-align:center">
+    row = rel_pos + max_relative_positions = rel_pos + 512
+  </div>
+
+  <table>
+    <tr><th>Distance</th><th>Row Index</th><th>→</th><th>Embedding (first 4 of 64 dims)</th></tr>
+    <tr><td style="color:var(--gold)">0 (self)</td><td>512</td><td>→</td><td class="code">[0.00, 0.00, 0.00, 0.00, …]</td></tr>
+    <tr><td style="color:var(--accent)">1 (bonded)</td><td>513</td><td>→</td><td class="code">[0.03, -0.01, 0.02, 0.01, …]</td></tr>
+    <tr><td style="color:var(--purple)">2 (two bonds)</td><td>514</td><td>→</td><td class="code">[0.01, 0.02, -0.01, 0.03, …]</td></tr>
+    <tr><td>3</td><td>515</td><td>→</td><td class="code">[-0.01, 0.03, 0.01, 0.02, …]</td></tr>
+  </table>
+  
+  <p style="font-size:12px;color:var(--dim);margin-top:8px">
+    Position 0 (self-distance) is explicitly zeroed during training setup with 
+    <span class="code">rel_embeddings.weight[0].fill_(0)</span>.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 7: Disentangled Attention -->
+<!-- ============================================================ -->
+<h2><span class="step-num">7</span> Disentangled Attention (The Heart of DeBERTa)</h2>
+
+<div class="panel">
+  <div class="panel-title">Three attention terms: Content↔Content + Content→Position + Position→Content</div>
+  
+  <p>Standard self-attention: <span class="code">softmax(QK^T / √d) × V</span></p>
+  <p>Disentangled attention adds <strong>two cross terms</strong>:</p>
+  
+  <div style="background:#0d0d20;padding:16px;border-radius:8px;margin:12px 0;text-align:center;font-size:16px">
+    <span style="color:var(--accent)">Attention = softmax(</span>
+    <span style="color:var(--gold)">Q<sub>c</sub>K<sub>c</sub><sup>T</sup></span>
+    <span> + </span>
+    <span style="color:#ff66aa">Q<sub>c</sub>K<sub>r</sub><sup>T</sup></span>
+    <span> + </span>
+    <span style="color:#66aaff">Q<sub>r</sub>K<sub>c</sub><sup>T</sup></span>
+    <span style="color:var(--accent)">) × V</span>
+  </div>
+
+  <table>
+    <tr><th>Term</th><th>Name</th><th>What it means for molecules</th></tr>
+    <tr>
+      <td style="color:var(--gold)">Q<sub>c</sub>K<sub>c</sub><sup>T</sup></td>
+      <td>Content→Content</td>
+      <td>"How much does atom i's <em>identity</em> attend to atom j's <em>identity</em>?"<br><span style="color:var(--dim);font-size:11px">e.g., "Carbons attend to nearby oxygens"</span></td>
+    </tr>
+    <tr>
+      <td style="color:#ff66aa">Q<sub>c</sub>K<sub>r</sub><sup>T</sup></td>
+      <td>Content→Position (c2p)</td>
+      <td>"Given atom i's identity, how much does it care about atoms at <em>distance d</em>?"<br><span style="color:var(--dim);font-size:11px">e.g., "An sp² carbon cares about atoms 1 bond away (direct neighbors)"</span></td>
+    </tr>
+    <tr>
+      <td style="color:#66aaff">Q<sub>r</sub>K<sub>c</sub><sup>T</sup></td>
+      <td>Position→Content (p2c)</td>
+      <td>"Given distance d, how much should atoms at that distance attend to atom j's identity?"<br><span style="color:var(--dim);font-size:11px">e.g., "At distance=1 (bonded), pay attention; at distance=5, ignore"</span></td>
+    </tr>
+  </table>
+
+  <h3>Concrete example: Attention from C₂ to all atoms in ethanol</h3>
+  
+  <div class="diagram" style="justify-content:flex-start;gap:16px">
+    <div style="display:flex;gap:4px;align-items:center">
+      <span style="color:var(--dim);font-size:12px">Query (C₂):</span>
+      <div class="matrix-cell" style="background:#1a2a1a">Q<sub>c</sub></div>
+      <span style="color:var(--dim)">+</span>
+      <div class="matrix-cell" style="background:#1a1a2a">Q<sub>r</sub>=0</div>
+    </div>
+  </div>
+  
+  <table>
+    <tr><th>Target</th><th>Distance</th><th>Q<sub>c</sub>K<sub>c</sub><sup>T</sup></th><th>Q<sub>c</sub>K<sub>r</sub><sup>T</sup></th><th>Q<sub>r</sub>K<sub>c</sub><sup>T</sup></th><th>Total</th><th>After softmax</th></tr>
+    <tr><td>[CLS]</td><td>0 (special)</td><td>0.12</td><td>0.05</td><td>0.03</td><td>0.20</td><td>0.18</td></tr>
+    <tr><td>C₁</td><td style="color:var(--accent)">1</td><td>0.35</td><td style="color:#ff66aa">0.28</td><td style="color:#66aaff">0.15</td><td class="highlight">0.78</td><td class="highlight">0.42</td></tr>
+    <tr><td>C₂ (self)</td><td style="color:var(--gold)">0</td><td>0.40</td><td>0.02</td><td>0.01</td><td>0.43</td><td>0.28</td></tr>
+    <tr><td>O</td><td style="color:var(--accent)">1</td><td>0.18</td><td style="color:#ff66aa">0.22</td><td style="color:#66aaff">0.12</td><td>0.52</td><td>0.31</td></tr>
+  </table>
+  
+  <p style="color:var(--dim);font-size:12px;margin-top:6px">
+    C₂ attends most to its <strong>direct neighbor C₁</strong> (bond distance=1), 
+    followed by O (also distance=1). The cross terms (c2p + p2c) reinforce bonded pairs. 
+    <br>The scale factor divides by √(64 × 2) = √128 ≈ 11.3 because 2 cross terms are active (c2p + p2c).
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 8: 12-Layer Encoder -->
+<!-- ============================================================ -->
+<h2><span class="step-num">8</span> 12-Layer Transformer Stack</h2>
+<div class="panel">
+  <div class="panel-title">Each layer: DisentangledAttention → Add&Norm → FFN → Add&Norm</div>
+  
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin:16px 0;font-family:monospace;font-size:13px">
+    <div style="background:#1a1a3a;padding:8px 16px;border-radius:6px;border:1px solid var(--border)">
+      Embeddings [B, L, 768]
+    </div>
+    <span style="color:var(--dim)">↓</span>
+    <div style="display:flex;gap:2px">
+      <span class="matrix-cell" style="font-size:11px">Layer 1</span>
+      <span class="matrix-cell" style="font-size:11px">Layer 2</span>
+      <span style="color:var(--dim)">…</span>
+      <span class="matrix-cell" style="font-size:11px">Layer 12</span>
+    </div>
+    <span style="color:var(--dim)">↓</span>
+    <div style="background:#1a3a1a;padding:8px 16px;border-radius:6px;border:1px solid var(--green)">
+      Hidden States [B, L, 768]
+    </div>
+    <span style="color:var(--dim)">↓</span>
+    <div style="background:#2a2a1a;padding:8px 16px;border-radius:6px;border:1px solid var(--gold)">
+      CLS token [B, 768] ← ctx_layer[:, 0, :]
+    </div>
+  </div>
+  
+  <table>
+    <tr><th>Layer</th><th>Component</th><th>Size</th></tr>
+    <tr><td>Each of 12</td><td>Q, K, V projections</td><td>768 → 768 (×3)</td></tr>
+    <tr><td>Each of 12</td><td>Output projection</td><td>768 → 768</td></tr>
+    <tr><td>Each of 12</td><td>FFN (2-layer)</td><td>768 → 3072 → 768</td></tr>
+    <tr><td>Each of 12</td><td>Position key proj (c2p)</td><td>768 → 768</td></tr>
+    <tr><td>Each of 12</td><td>Position query proj (p2c)</td><td>768 → 768</td></tr>
+    <tr><td>Shared</td><td>Word embeddings</td><td>211 × 768</td></tr>
+    <tr><td>Shared</td><td>Relative pos embeddings</td><td>1024 × 64</td></tr>
+    <tr style="color:var(--gold)"><td><strong>Total</strong></td><td colspan="2"><strong>~89M parameters</strong></td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 9: RTD Pretraining -->
+<!-- ============================================================ -->
+<h2><span class="step-num">9</span> RTD Pretraining (Generator → Discriminator)</h2>
+
+<div class="panel">
+  <div class="panel-title">Replaced Token Detection — every token gets a training signal</div>
+  
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin:16px 0">
+    <div style="flex:1;min-width:300px">
+      <h3 style="color:#ff9944">Generator (3 layers, ~7M params)</h3>
+      <p style="font-size:13px">Small model that corrupts the input:</p>
+      <ol style="font-size:12px;padding-left:20px;color:var(--dim)">
+        <li>15% of tokens are masked (never [CLS])</li>
+        <li>Of masked: 80% → [MASK], 10% → random token, 10% → unchanged</li>
+        <li>Generator predicts original token at masked positions</li>
+        <li>Generator's best guess replaces the masked tokens</li>
+        <li>Loss: <span class="code">CrossEntropy(gen_logits, mlm_labels)</span> on masked positions only</li>
+      </ol>
+    </div>
+    <div style="flex:1;min-width:300px">
+      <h3 style="color:var(--accent)">Discriminator (12 layers, ~89M params)</h3>
+      <p style="font-size:13px">Full model detects replaced tokens:</p>
+      <ol style="font-size:12px;padding-left:20px;color:var(--dim)">
+        <li>Takes generator's corrupted sequence as input</li>
+        <li>For EVERY token: predict "original" (0) or "replaced" (1)</li>
+        <li>Loss: <span class="code">BCE(disc_logits, disc_labels)</span> on ALL tokens</li>
+        <li>Label = 1 only if generator replaced token AND got it wrong</li>
+        <li>This is the model we keep for downstream tasks!</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>Concrete example with ethanol:</h3>
+  <table>
+    <tr><th>Step</th><th>[CLS]</th><th>C₁</th><th>C₂</th><th>O</th></tr>
+    <tr><td>Original tokens</td><td class="matrix-cell hl">1</td><td class="matrix-cell">17</td><td class="matrix-cell">23</td><td class="matrix-cell">89</td></tr>
+    <tr><td>After masking (15%)</td><td class="matrix-cell hl">1</td><td class="matrix-cell" style="background:#441a1a">[MASK]</td><td class="matrix-cell">23</td><td class="matrix-cell">89</td></tr>
+    <tr><td>Generator predicts</td><td class="matrix-cell hl">1</td><td class="matrix-cell" style="background:#1a3a1a">17 ✓</td><td class="matrix-cell">23</td><td class="matrix-cell">89</td></tr>
+    <tr><td>Discriminator input</td><td class="matrix-cell hl">1</td><td class="matrix-cell">17</td><td class="matrix-cell">23</td><td class="matrix-cell">89</td></tr>
+    <tr><td>Discriminator labels</td><td class="matrix-cell">0</td><td class="matrix-cell gold">0 <span style="font-size:10px">(correct!)</span></td><td class="matrix-cell">0</td><td class="matrix-cell">0</td></tr>
+  </table>
+  
+  <p style="font-size:12px;color:var(--dim);margin-top:8px">
+    In this case the generator got it right (predicted 17), so the discriminator label is 0 (original).
+    The discriminator must learn to distinguish "genuine atom in this context" from "generator inserted something wrong."
+  </p>
+
+  <h3>Loss function:</h3>
+  <div style="background:#0d0d20;padding:12px;border-radius:8px;text-align:center;font-size:14px">
+    <span style="color:var(--gold)">L<sub>total</sub> = L<sub>gen</sub> + 50 × L<sub>disc</sub></span>
+  </div>
+  <p style="font-size:12px;color:var(--dim);margin-top:6px;text-align:center">
+    λ=50 weights the discriminator heavily — it's the model we actually keep.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 10: GDES -->
+<!-- ============================================================ -->
+<h2><span class="step-num">10</span> GDES: Gradient-Disentangled Embedding Sharing</h2>
+<div class="panel">
+  <div class="panel-title">How generator and discriminator share embeddings without gradient interference</div>
+  
+  <div style="background:#0d0d20;padding:16px;border-radius:8px;margin:12px 0;text-align:center;font-size:14px">
+    <span style="color:var(--accent)">W<sub>disc</sub></span> = 
+    <span style="color:#ff9944">W<sub>gen</sub>.detach()</span> + 
+    <span style="color:var(--gold)">b<sub>disc</sub></span>
+  </div>
+  
+  <table>
+    <tr><th>Component</th><th>Updated by</th><th>Description</th></tr>
+    <tr>
+      <td style="color:#ff9944">W<sub>gen</sub></td>
+      <td>Generator MLM loss</td>
+      <td>211 × 768 embedding matrix. Generator gradients flow normally.</td>
+    </tr>
+    <tr>
+      <td style="color:var(--gold)">b<sub>disc</sub></td>
+      <td>Discriminator RTD loss</td>
+      <td>211 × 768 bias, initialized to zeros. Only discriminator-specific delta.</td>
+    </tr>
+  </table>
+  
+  <div class="note">
+    <strong>Why GDES?</strong> Without it, the discriminator's gradients would update W<sub>gen</sub> too, 
+    coupling the two models. With GDES, the generator learns good token embeddings from MLM,
+    and the discriminator learns subtle deviations (b<sub>disc</sub>) from those embeddings for RTD. 
+    Both share the same semantic space without interfering.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 11: Downstream -->
+<!-- ============================================================ -->
+<h2><span class="step-num">11</span> Downstream: Frozen Encoder → XGBoost</h2>
+<div class="panel">
+  <div class="panel-title">Why freeze the encoder and use XGBoost for small datasets</div>
+  
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin:12px 0">
+    <div style="flex:1;min-width:280px">
+      <h3>Step 1: Extract CLS embeddings</h3>
+      <div class="code" style="display:block;padding:8px;margin:6px 0">
+        <span style="color:var(--dim)"># For each molecule:</span><br>
+        encoder_output = encoder(input_ids, input_mask,<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;relative_pos=relative_pos)<br>
+        cls_embedding = encoder_output[:, 0, :]  <span style="color:var(--dim)"># [1, 768]</span>
+      </div>
+      <p style="font-size:12px;color:var(--dim)">The [CLS] token at position 0 aggregates information from all atoms through 12 layers of disentangled attention.</p>
+    </div>
+    <div style="flex:1;min-width:280px">
+      <h3>Step 2: XGBoost on frozen embeddings</h3>
+      <p style="font-size:12px;color:var(--dim)">
+        With 813 training molecules (TYK2), you cannot finetune an 89M-param model.
+        Instead: extract 768-dim embeddings → train XGBoost with 5-fold CV grid search.
+      </p>
+      <table>
+        <tr><th>Hyperparameter</th><th>Values Searched</th></tr>
+        <tr><td>n_estimators</td><td>300, 600, 1000</td></tr>
+        <tr><td>max_depth</td><td>4, 6, 8</td></tr>
+        <tr><td>learning_rate</td><td>0.05, 0.1</td></tr>
+        <tr><td>subsample</td><td>0.8</td></tr>
+        <tr><td>Total configs</td><td class="highlight">72 × 5 folds = 360 fits</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 12: Training Summary -->
+<!-- ============================================================ -->
+<h2><span class="step-num">12</span> Training at Scale (EIDF, 4×A100)</h2>
+<div class="panel">
+  <div class="panel-title">The full ZINC 415M training run</div>
+  
+  <table>
+    <tr><th>Stage</th><th>GPUs</th><th>Wall Time</th><th>Peak Memory</th><th>Steps/Details</th></tr>
+    <tr>
+      <td style="color:var(--accent)">ZINC RTD Pretraining</td>
+      <td>4×A100-40GB</td>
+      <td>~29 hours</td><td>~35GB/GPU</td>
+      <td>1M steps, batch 512, lr=1e-4, AdamW</td>
+    </tr>
+    <tr>
+      <td style="color:var(--gold)">ChEMBL Supervised (opt)</td>
+      <td>1×A100-40GB</td>
+      <td>~3 hours</td><td>~4GB (with GC)</td>
+      <td>60k steps, 3888 assay heads, frozen encoder</td>
+    </tr>
+    <tr>
+      <td>Embedding Extraction</td>
+      <td>1×A100</td>
+      <td>~2 min</td><td>~4GB</td>
+      <td>Forward pass only</td>
+    </tr>
+    <tr>
+      <td style="color:var(--green)">XGBoost CV + Predict</td>
+      <td>CPU (8 cores)</td>
+      <td>~10 min</td><td>~8GB RAM</td>
+      <td>360 fits on (813, 768) data</td>
+    </tr>
+  </table>
+  
+  <h3>Results:</h3>
+  <table>
+    <tr><th>Task</th><th>Model</th><th>Metric</th><th>Score</th></tr>
+    <tr>
+      <td>BBBP (BBB penetration)</td>
+      <td>MolE-RTD-ZINC415M (frozen → LogReg)</td>
+      <td>Test AUROC</td>
+      <td class="highlight">0.878 ± 0.019</td>
+    </tr>
+    <tr>
+      <td>BBBP (baseline)</td>
+      <td>Random-init same architecture</td>
+      <td>Test AUROC</td>
+      <td>0.828 ± 0.039</td>
+    </tr>
+    <tr><td colspan="4" style="color:var(--gold)"><strong>Δ = +5.07 AUROC with ~2× lower variance</strong></td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 13: Key Design Decisions -->
+<!-- ============================================================ -->
+<h2>🎯 Key Design Decisions (Why Each Choice Matters)</h2>
+<div class="panel">
+  <table>
+    <tr><th>Decision</th><th>What it means</th><th>Why</th></tr>
+    <tr>
+      <td style="color:var(--accent)">RTD over MLM</td>
+      <td>Binary detection on ALL tokens vs. predicting only masked 15%</td>
+      <td>Every token gets a gradient → richer representations per step</td>
+    </tr>
+    <tr>
+      <td style="color:var(--accent)">Radius 0 tokens</td>
+      <td>Atoms encoded by type only, not neighborhood</td>
+      <td>Otherwise RTD is trivial — "this neighborhood doesn't match"</td>
+    </tr>
+    <tr>
+      <td style="color:var(--accent)">No absolute positions</td>
+      <td>position_biased_input=False</td>
+      <td>Molecules don't have a "first atom" — graph structure IS position</td>
+    </tr>
+    <tr>
+      <td style="color:var(--accent)">Bond distances = rel pos</td>
+      <td>Shortest path in molecular graph → attention bias</td>
+      <td>Natural inductive bias for molecular modeling</td>
+    </tr>
+    <tr>
+      <td style="color:var(--gold)">GDES</td>
+      <td>detach + bias sharing</td>
+      <td>Shared semantic space without gradient interference</td>
+    </tr>
+    <tr>
+      <td style="color:var(--gold)">λ<sub>rtd</sub> = 50</td>
+      <td>Discriminator loss weighted 50× over generator</td>
+      <td>Discriminator is the model we keep; generator is auxiliary</td>
+    </tr>
+    <tr>
+      <td style="color:var(--green)">Frozen encoder + XGBoost</td>
+      <td>No fine-tuning on small downstream datasets</td>
+      <td>89M params on 813 samples = guaranteed overfitting</td>
+    </tr>
+    <tr>
+      <td style="color:var(--green)">Pre-tokenized shards</td>
+      <td>.pt files with tokens + edge_index baked in</td>
+      <td>2× throughput, avoids CPU tokenization during training</td>
+    </tr>
+  </table>
+</div>
+
+<p style="text-align:center;color:var(--dim);margin:40px 0;font-size:13px">
+  Built for understanding the MolE-RTD pipeline. Every step from SMILES → prediction.<br>
+  <a href="https://github.com/caithmac/mole-rtd" style="color:var(--accent)">github.com/caithmac/mole-rtd</a>
+</p>
+
+</div>
+</body>
+</html>
